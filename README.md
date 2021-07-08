@@ -201,23 +201,70 @@ public interface OrderRepository extends PagingAndSortingRepository<Order, Long>
 ```
 
 ```
-order 서비스의 주문처리
-```
+
+- order 서비스의 주문처리
+
 ![001](https://user-images.githubusercontent.com/26791027/124974095-5ce99f80-e067-11eb-8bec-2e87920e9053.PNG)
 
-```
-payment 조회
-```
-![002](https://user-images.githubusercontent.com/26791027/124974346-a76b1c00-e067-11eb-9a64-d27a28c4b68c.PNG)
+- payment 조회
 
-```
+![002](https://user-images.githubusercontent.com/26791027/124974346-a76b1c00-e067-11eb-9a64-d27a28c4b68c.PNG)
+- drink 서비스의 처리
+![003](https://user-images.githubusercontent.com/26791027/124974755-23656400-e068-11eb-91f5-e6c5baa5d1be.PNG)
+
+- # customercenter 서비스 확인
+
+
+
 ## API Gateway
 - API Gateway를 통하여 동일 진입점으로 진입하여 각 마이크로 서비스를 접근할 수 있다. 
 ```
 # application.yml
 
+spring:
+  profiles: docker
+  cloud:
+    gateway:
+      routes:
+        - id: order
+          uri: http://order:8080
+          predicates:
+            - Path=/orders/** 
+        - id: payment
+          uri: http://payment:8080
+          predicates:
+            - Path=/payments/** 
+        - id: drink
+          uri: http://drink:8080
+          predicates:
+            - Path=/drinks/**,/orderinfos/**
+        - id: customercenter
+          uri: http://customercenter:8080
+          predicates:
+            - Path= /mypages/**
 
-
+# service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway
+  labels:
+    app: gateway
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 8080
+      targetPort: 8080
+  selector:
+    app: gateway
+    
+$ kubectl get svc
+NAME             TYPE           CLUSTER-IP       EXTERNAL-IP                                                                  PORT(S)          AGE
+customercenter   ClusterIP      10.100.52.95     <none>                                                                       8080/TCP         9h
+drink            ClusterIP      10.100.136.6     <none>                                                                       8080/TCP         9h
+gateway          LoadBalancer   10.100.164.152   a6826d83b5c8e4f5dad7129c7cdf0ded-93964597.ap-northeast-2.elb.amazonaws.com   8080:30109/TCP   9h
+order            ClusterIP      10.100.197.15    <none>                                                                       8080/TCP         9h
+payment          ClusterIP      10.100.242.153   <none>         
 
 ```
 
