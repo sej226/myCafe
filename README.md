@@ -74,8 +74,7 @@
   - API 게이트웨이
     - API GW를 통하여 마이크로 서비스들의 집입점을 통일할 수 있는가?
     - 게이트웨이와 인증서버(OAuth), JWT 토큰 인증을 통하여 마이크로서비스들을 보호할 수 있는가?
-- 
-(25)
+- 운영(25)
   - SLA 준수
     - 셀프힐링: Liveness Probe 를 통하여 어떠한 서비스의 health 상태가 지속적으로 저하됨에 따라 어떠한 임계치에서 pod 가 재생되는 것을 증명할 수 있는가?
     - 서킷브레이커, 레이트리밋 등을 통한 장애격리와 성능효율을 높힐 수 있는가?
@@ -202,10 +201,14 @@ public interface OrderRepository extends PagingAndSortingRepository<Order, Long>
 ```
 
 ```
-# order 서비스의 주문처리
+order 서비스의 주문처리
 ```
+![001](https://user-images.githubusercontent.com/26791027/124974095-5ce99f80-e067-11eb-8bec-2e87920e9053.PNG)
 
-
+```
+payment 조회
+```
+![002](https://user-images.githubusercontent.com/26791027/124974346-a76b1c00-e067-11eb-9a64-d27a28c4b68c.PNG)
 
 ```
 ## API Gateway
