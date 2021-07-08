@@ -198,21 +198,18 @@ public interface OrderRepository extends PagingAndSortingRepository<Order, Long>
 
 ```
 - 적용 후 REST API 의 테스트
-```
 
-```
-
-- order 서비스의 주문처리
+order 서비스의 주문처리
 
 ![001](https://user-images.githubusercontent.com/26791027/124974095-5ce99f80-e067-11eb-8bec-2e87920e9053.PNG)
 
-- payment 조회
+payment 조회
 
 ![002](https://user-images.githubusercontent.com/26791027/124974346-a76b1c00-e067-11eb-9a64-d27a28c4b68c.PNG)
 - drink 서비스의 처리
 ![003](https://user-images.githubusercontent.com/26791027/124974755-23656400-e068-11eb-91f5-e6c5baa5d1be.PNG)
 
-- customercenter 서비스 확인
+customercenter 서비스 확인
 
 
 
@@ -303,7 +300,6 @@ public interface PaymentService {
 ```
     @PostPersist
     public void onPostPersist(){
-        :
 
         Payment payment = new Payment();
         payment.setOrderId(this.id);
@@ -483,22 +479,102 @@ Transfer-Encoding: chunked
 
 ## Saga Pattern / 보상 트랜잭션
 *****
+직원이 음료를 접수하기 전에만 주문 취소가 가능하다. 만약 음료가 접수된 후에 취소할 경우에 보상 트랜잭션을 통해 취소를 원복한다.
+주문 취소는 Saga Pattern으로 만들어져 있어, 직원이 음료를 이미 접수했을 경우에 취소 실패를 Event로 Publish하고 Order 서비스에서 취소 실패 Event를 Subscribe하여 주문 취소를 원복한다.
+
+
 
 ## CQRS / Meterialized View
 *****
+CustomerCenter의 Mypage를 구현하여 Order 서비스, Payment 서비스, Drink 서비스의 데이터를 Composite서비스나 DB Join없이 조회할 수 있다.
+```
+root@siege-5b99b44c9c-8qtpd:/# http http://customercenter:8080/mypages/search/findByPhoneNumber?phoneNumber="01012345679"
+HTTP/1.1 200 
+Content-Type: application/json;charset=UTF-8
+Date: Sat, 20 Feb 2021 14:57:45 GMT
+Transfer-Encoding: chunked
+
+[
+    {
+        "amt": 5000,
+        "id": 4544,
+        "orderId": 4,
+        "phoneNumber": "01012345679",
+        "productName": "coffee",
+        "qty": 3,
+        "status": "Made"
+    },
+    {
+        "amt": 5000,
+        "id": 4545,
+        "orderId": 5,
+        "phoneNumber": "01012345679",
+        "productName": "coffee",
+        "qty": 3,
+        "status": "Ordered"
+    },
+    {
+        "amt": 5000,
+        "id": 4546,
+        "orderId": 6,
+        "phoneNumber": "01012345679",
+        "productName": "coffee",
+        "qty": 3,
+        "status": "Receipted"
+    },
+    {
+        "amt": 5000,
+        "id": 4547,
+        "orderId": 7,
+        "phoneNumber": "01012345679",
+        "productName": "coffee",
+        "qty": 3,
+        "status": "Ordered"
+    }
+]
+```
 
 ## 운영
 *****
 ### Liveness / Readiness 설정
 *****
+Pod 생성 시 준비되지 않은 상태에서 요청을 받아 오류가 발생하지 않도록 Readiness Probe와 Liveness Probe를 설정했다.
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order
+  labels:
+    app: order
+spec:
+  :
+        readinessProbe:
+          httpGet:
+            path: '/actuator/health'
+            port: 8080
+          initialDelaySeconds: 10 
+          timeoutSeconds: 2 
+          periodSeconds: 5 
+          failureThreshold: 10
+        livenessProbe:
+          httpGet:
+            path: '/actuator/health'
+            port: 8080
+          initialDelaySeconds: 120
+          timeoutSeconds: 2
+          periodSeconds: 5
+          failureThreshold: 5
+
+```
 
 ### Self Healing
 *****
+livenessProbe를 설정하여 문제가 있을 경우 스스로 재기동 되도록 한다.
+
 
 ### CI/CD 설정
 *****
-각 구현체들은 각자의 source repository 에 구성되었고, 사용한 CI/CD는 buildspec.yml을 이용한 AWS codebuild를 사용
-- CodeBuild 프로젝트를 생성하고 AWS_ACCOUNT_ID, KUBE_URL, KUBE_TOKEN 환경 변수 세팅을 한다
+
 ```
 SA 생성
 ```
@@ -521,12 +597,127 @@ KUBE_URL 확인
 ![kube_url](https://user-images.githubusercontent.com/26791027/124947164-91029780-e04a-11eb-88d8-8edbffc45f85.PNG)
 
 ```
-buildspec.yml 파일 
+codeBuild
 ```
+![build](https://user-images.githubusercontent.com/26791027/124979414-fcaa2c00-e06d-11eb-820a-044482789a47.PNG)
 
 
 ### 동기식 호출 / 서킷 브레이킹 / 장애격리
 *****
+서킷 브레이킹 프레임워크의 선택: Spring FeignClient + Hystrix 옵션을 사용하여 구현함
+시나리오는 order -> payment 호출 시의 연결을 RESTful Request/Response 로 연동하여 구현이 되어있고, 결제 요청이 과도할 경우 CB 를 통하여 장애격리.
+
+- Hystrix 를 설정: 요청처리 쓰레드에서 처리시간이 610 밀리가 넘어서기 시작하여 어느정도 유지되면 CB 회로가 닫히도록 (요청을 빠르게 실패처리, 차단) 설정
+```
+# application.yml
+
+feign:
+  hystrix:
+    enabled: false 
+
+hystrix:
+  command:
+    default:
+      execution:
+        isolation:
+          strategy: THREAD
+          thread:
+            timeoutInMilliseconds: 610         #설정 시간동안 처리 지연발생시 timeout and 설정한 fallback 로직 수행     
+      circuitBreaker:
+        requestVolumeThreshold: 20           # 설정수 값만큼 요청이 들어온 경우만 circut open 여부 결정 함
+        errorThresholdPercentage: 30        # requestVolumn값을 넘는 요청 중 설정 값이상 비율이 에러인 경우 circuit open
+        sleepWindowInMilliseconds: 5000    # 한번 오픈되면 얼마나 오픈할 것인지 
+      metrics:
+        rollingStats:
+          timeInMilliseconds: 10000   
+```
+- 피호출 서비스(payment) 의 임의 부하 처리 - 400 밀리에서 증감 220 밀리 정도 왔다갔다 하게
+```
+@PrePersist
+    public void onPrePersist(){  //결제이력을 저장한 후 적당한 시간 끌기
+
+        :
+        
+        try {
+            Thread.currentThread().sleep((long) (400 + Math.random() * 220));
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
+```
+- 부하테스터 siege 툴을 통한 서킷 브레이커 동작 확인:
+- 동시사용자 100명
+- 60초 동안 실시
+```
+root@siege-5b99b44c9c-ldf2l:/# siege -v -c100 -t60s --content-type "application/json" 'http://order:8080/orders POST {"phoneNumber":"01087654321", "productName":"coffee", "qty":2, "amt":1000}'
+** SIEGE 4.0.4
+** Preparing 100 concurrent users for battle.
+The server is now under siege...
+HTTP/1.1 201     0.57 secs:     317 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     0.57 secs:     319 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     0.63 secs:     317 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     0.64 secs:     317 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     0.63 secs:     317 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     0.69 secs:     319 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     0.73 secs:     317 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     0.74 secs:     317 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     0.75 secs:     319 bytes ==> POST http://order:8080/orders
+HTTP/1.1 500     0.79 secs:     248 bytes ==> POST http://order:8080/orders
+HTTP/1.1 500     0.22 secs:     248 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     1.11 secs:     319 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     1.18 secs:     319 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     1.21 secs:     319 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     1.20 secs:     319 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     1.24 secs:     319 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     1.26 secs:     319 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     1.28 secs:     319 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     1.37 secs:     319 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     1.37 secs:     319 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     1.40 secs:     319 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     1.65 secs:     319 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     1.71 secs:     319 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     1.76 secs:     319 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     1.80 secs:     319 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     1.78 secs:     319 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     1.88 secs:     319 bytes ==> POST http://order:8080/orders
+HTTP/1.1 500     1.89 secs:     248 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     1.89 secs:     319 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     2.00 secs:     319 bytes ==> POST http://order:8080/orders
+HTTP/1.1 500     2.01 secs:     248 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     2.12 secs:     319 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     2.16 secs:     319 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     2.21 secs:     319 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     2.31 secs:     319 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     2.33 secs:     319 bytes ==> POST http://order:8080/orders
+HTTP/1.1 500     2.44 secs:     248 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     2.48 secs:     319 bytes ==> POST http://order:8080/orders
+HTTP/1.1 500     2.48 secs:     248 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     2.51 secs:     319 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     2.52 secs:     319 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     2.57 secs:     319 bytes ==> POST http://order:8080/orders
+HTTP/1.1 500     2.67 secs:     248 bytes ==> POST http://order:8080/orders
+HTTP/1.1 500     2.66 secs:     248 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     2.80 secs:     319 bytes ==> POST http://order:8080/orders
+HTTP/1.1 500     2.83 secs:     248 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     2.84 secs:     319 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     2.89 secs:     319 bytes ==> POST http://order:8080/orders
+...
+Lifting the server siege...siege aborted due to excessive socket failure; you
+can change the failure threshold in $HOME/.siegerc
+
+Transactions:		         701 hits
+Availability:		       39.58 %
+Elapsed time:		       59.21 secs
+Data transferred:	        0.47 MB
+Response time:		        8.18 secs
+Transaction rate:	       11.84 trans/sec
+Throughput:		        0.01 MB/sec
+Concurrency:		       96.90
+Successful transactions:         701
+Failed transactions:	        1070
+Longest transaction:	        9.81
+Shortest transaction:	        0.05
+``` 
 
 ### 모니터링
 *****
