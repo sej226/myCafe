@@ -212,7 +212,7 @@ public interface OrderRepository extends PagingAndSortingRepository<Order, Long>
 - drink 서비스의 처리
 ![003](https://user-images.githubusercontent.com/26791027/124974755-23656400-e068-11eb-91f5-e6c5baa5d1be.PNG)
 
-- # customercenter 서비스 확인
+- customercenter 서비스 확인
 
 
 
@@ -262,11 +262,12 @@ $ kubectl get svc
 NAME             TYPE           CLUSTER-IP       EXTERNAL-IP                                                                  PORT(S)          AGE
 customercenter   ClusterIP      10.100.52.95     <none>                                                                       8080/TCP         9h
 drink            ClusterIP      10.100.136.6     <none>                                                                       8080/TCP         9h
-gateway          LoadBalancer   10.100.164.152   a6826d83b5c8e4f5dad7129c7cdf0ded-93964597.ap-northeast-2.elb.amazonaws.com   8080:30109/TCP   9h
+gateway          LoadBalancer   10.100.164.152   a6826d83b5c8e4f5dad7129c7cdf0ded-93964597.ap-southeast-2.elb.amazonaws.com   8080:30109/TCP   9h
 order            ClusterIP      10.100.197.15    <none>                                                                       8080/TCP         9h
 payment          ClusterIP      10.100.242.153   <none>         
 
 ```
+![001](https://user-images.githubusercontent.com/26791027/124976058-bc48af00-e069-11eb-9de9-16ec5a4451e8.PNG)
 
 
 
@@ -278,51 +279,207 @@ payment          ClusterIP      10.100.242.153   <none>
 
 ## 동기식 호출 과 Fallback 처리
 *****
-분석단계에서의 조건 중 하나로 moving->payment 간의 호출은 동기식 일관성을 유지하는 트랜잭션으로 처리하기로 하였다. 
+분석단계에서의 조건 중 하나로 order->payment 간의 호출은 동기식 일관성을 유지하는 트랜잭션으로 처리하기로 하였다. 
 호출 프로토콜은 이미 앞서 Rest Repository 에 의해 노출되어있는 REST 서비스를 FeignClient 를 이용하여 호출하도록 한다.
 
 - 결제서비스를 호출하기 위하여 Stub과 (FeignClient) 를 이용하여 Service 대행 인터페이스 (Proxy) 를 구현
 ```
-package movingday.external;
+package cafeteria.external;
 
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 
-@FeignClient(name="payment", url="http://payment:8080")
+@FeignClient(name="payment", url="${feign.client.payment.url}")
 public interface PaymentService {
 
     @RequestMapping(method= RequestMethod.POST, path="/payments")
-    public void payMoving(@RequestBody Payment payment);
+    public void pay(@RequestBody Payment payment);
 
 }
 ```
-- 이사 견적 요청된 직후(@PostPersist) 결제를 요청하도록 처리
+- 음료 주문 직후(@PostPersist) 결제를 요청하도록 처리
 ```
- @PostPersist
+    @PostPersist
     public void onPostPersist(){
+        :
+
+        Payment payment = new Payment();
+        payment.setOrderId(this.id);
+        payment.setPhoneNumber(this.phoneNumber);
+        payment.setAmt(this.amt);
         
-         Payment payment = new Payment();    
-         payment.setMovingId(this.movingId);
-         payment.setPhoneNumber(this.phoneNumber);
-
-         MovingApplication.applicationContext.getBean(movingday.external.PaymentService.class)
-            .payMoving(payment);
-
+        OrderApplication.applicationContext.getBean(PaymentService.class).pay(payment);
     }
 ```
 - 동기식 호출에서는 호출 시간에 따른 타임 커플링이 발생하며, 결제 시스템이 장애가 나면 주문도 못받는다는 것을 확인
+
 ```
-![캡처](https://user-images.githubusercontent.com/26791027/124963987-71279f80-e05b-11eb-9fac-b9cd1b4cf2e3.PNG)
+# 결제 (payment) 서비스를 잠시 내려놓음
+$ kubectl delete deploy payment
+deployment.apps "payment" deleted
+
+#주문처리
+
+root@siege-5b99b44c9c-8qtpd:/# http http://order:8080/orders phoneNumber="01012345679" productName="coffee" qty=3 amt=5000
+HTTP/1.1 500 
+Connection: close
+Content-Type: application/json;charset=UTF-8
+Date: Sat, 20 Feb 2021 14:39:23 GMT
+Transfer-Encoding: chunked
+{
+    "error": "Internal Server Error",
+    "message": "Could not commit JPA transaction; nested exception is javax.persistence.RollbackException: Error while committing the transaction",
+    "path": "/orders",
+    "status": 500,
+    "timestamp": "2021-02-20T14:39:23.185+0000"
+}
+
+#결제서비스 재기동
+$ kubectl apply -f deployment.yml
+deployment.apps/payment created
+
+#주문처리
+
+root@siege-5b99b44c9c-8qtpd:/# http http://order:8080/orders phoneNumber="01012345679" productName="coffee" qty=3 amt=5000
+HTTP/1.1 201 
+Content-Type: application/json;charset=UTF-8
+Date: Sat, 20 Feb 2021 14:51:42 GMT
+Location: http://order:8080/orders/6
+Transfer-Encoding: chunked
+
+{
+    "_links": {
+        "order": {
+            "href": "http://order:8080/orders/6"
+        },
+        "self": {
+            "href": "http://order:8080/orders/6"
+        }
+    },
+    "amt": 5000,
+    "createTime": "2021-02-20T14:51:40.580+0000",
+    "phoneNumber": "01012345679",
+    "productName": "coffee",
+    "qty": 3,
+    "status": "Ordered"
+}
 
 ```
 - 또한 과도한 요청시에 서비스 장애가 도미노 처럼 벌어질 수 있다. 
 
 ## 비동기식 호출 / 시간적 디커플링 / 장애격리 / 최종 (Eventual) 일관성 테스트
 *****
-결제가 이루어진 후에 기사님에게 이를 알려주는 행위는 동기식이 아니라 비 동기식으로 처리하여 이사 시스템의 처리를 위하여 이사 등록 처리가이 블로킹 되지 않아도록 처리한다.
+결제가 이루어진 후에 상점시스템으로 이를 알려주는 행위는 동기식이 아니라 비 동기식으로 처리하여 상점 시스템의 처리를 위하여 결제주문이 블로킹 되지 않아도록 처리한다.
+- 결제이력에 기록을 남긴 후에 곧바로 결제승인이 되었다는 도메인 이벤트를 카프카로 송출한다 (Publish)
+```
+package cafeteria;
 
+@Entity
+@Table(name="Payment")
+public class Payment {
+
+ :
+    @PostPersist
+    public void onPostPersist(){
+        PaymentApproved paymentApproved = new PaymentApproved();
+        BeanUtils.copyProperties(this, paymentApproved);
+        paymentApproved.publishAfterCommit();
+
+    }
+}
+```
+- 음료 서비스에서는 Ordered 이벤트에 대해서 이를 수신하여 자신의 정책을 처리하도록 PolicyHandler 를 구현
+```
+@StreamListener(KafkaProcessor.INPUT)
+    public void wheneverOrdered_(@Payload Ordered ordered){
+
+        if(ordered.isMe()){
+            log.info("##### listener  : " + ordered.toJson());
+            
+            List<Drink> drinks = drinkRepository.findByOrderId(ordered.getId());
+            for(Drink drink : drinks) {
+           	drink.setPhoneNumber(ordered.getPhoneNumber());
+            	drink.setProductName(ordered.getProductName());
+               	drink.setQty(ordered.getQty());
+               	drinkRepository.save(drink);
+            }
+        }
+    }
+
+```
+- 음료 시스템은 주문/결제와 완전히 분리되어있으며, 이벤트 수신에 따라 처리되기 때문에, 음료시스템이 유지보수로 인해 잠시 내려간 상태라도 주문을 받는데 문제 없음
+```
+# 음료 서비스 (drink) 를 잠시 내려놓음
+$ kubectl delete deploy drink
+deployment.apps "drink" deleted
+
+#주문처리
+root@siege-5b99b44c9c-8qtpd:/# http http://order:8080/orders phoneNumber="01012345679" productName="coffee" qty=3 amt=5000
+HTTP/1.1 201 
+Content-Type: application/json;charset=UTF-8
+Date: Sat, 20 Feb 2021 14:53:25 GMT
+Location: http://order:8080/orders/7
+Transfer-Encoding: chunked
+
+{
+    "_links": {
+        "order": {
+            "href": "http://order:8080/orders/7"
+        },
+        "self": {
+            "href": "http://order:8080/orders/7"
+        }
+    },
+    "amt": 5000,
+    "createTime": "2021-02-20T14:53:25.115+0000",
+    "phoneNumber": "01012345679",
+    "productName": "coffee",
+    "qty": 3,
+    "status": "Ordered"
+}
+#음료 서비스 기동
+kubectl apply -f deployment.yml
+deployment.apps/drink created
+
+#음료등록 확인
+
+root@siege-5b99b44c9c-8qtpd:/# http http://drink:8080/drinks/search/findByOrderId?orderId=7
+HTTP/1.1 200 
+Content-Type: application/hal+json;charset=UTF-8
+Date: Sat, 20 Feb 2021 14:54:14 GMT
+Transfer-Encoding: chunked
+
+{
+    "_embedded": {
+        "drinks": [
+            {
+                "_links": {
+                    "drink": {
+                        "href": "http://drink:8080/drinks/4"
+                    },
+                    "self": {
+                        "href": "http://drink:8080/drinks/4"
+                    }
+                },
+                "createTime": "2021-02-20T14:53:25.194+0000",
+                "orderId": 7,
+                "phoneNumber": "01012345679",
+                "productName": "coffee",
+                "qty": 3,
+                "status": "PaymentApproved"
+            }
+        ]
+    },
+    "_links": {
+        "self": {
+            "href": "http://drink:8080/drinks/search/findByOrderId?orderId=7"
+        }
+    }
+}
+
+```
 
 ## Saga Pattern / 보상 트랜잭션
 *****
