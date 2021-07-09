@@ -962,15 +962,15 @@ kubectl get deploy payment -w
 - 어느정도 시간이 흐른 후 (약 30초) 스케일 아웃이 벌어지는 것을 확인할 수 있다:
 ```
 NAME      DESIRED   CURRENT   UP-TO-DATE   AVAILABLE   AGE
-payment   1         1         1         1         1h
-payment   4         1         1         1         1h
-payment   4         1         1         1         1h
-payment   4         1         1         1         1h
-payment   4         4         4         1         1h
-payment   5         4         4         1         1h
-payment   5         4         4         1         1h
-payment   5         4         4         1         1h
-payment   5         5         5         1         1h
+payment   1         1         1         1         26s
+payment   4         1         1         1         57s
+payment   4         1         1         1         2m9s
+payment   4         1         1         1         2m9s
+payment   4         4         4         1         2m9s
+payment   5         4         4         1         2m45s
+payment   5         4         4         1         2m45s
+payment   5         4         4         1         2m45s
+payment   5         5         5         1         3m21s
 ```
 - siege 의 로그를 보아도 전체적인 성공률이 높아진 것을 확인 할 수 있다.
 ```
