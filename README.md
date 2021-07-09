@@ -526,7 +526,170 @@ Transfer-Encoding: chunked
 *****
 직원이 음료를 접수하기 전에만 주문 취소가 가능하다. 만약 음료가 접수된 후에 취소할 경우에 보상 트랜잭션을 통해 취소를 원복한다.
 주문 취소는 Saga Pattern으로 만들어져 있어, 직원이 음료를 이미 접수했을 경우에 취소 실패를 Event로 Publish하고 Order 서비스에서 취소 실패 Event를 Subscribe하여 주문 취소를 원복한다.
+```
+# 주문
+root@siege-5b99b44c9c-8qtpd:/# http http://order:8080/orders/5
+HTTP/1.1 200 
+Content-Type: application/hal+json;charset=UTF-8
+Date: Sat, 20 Feb 2021 08:58:19 GMT
+Transfer-Encoding: chunked
+{
+    "_links": {
+        "order": {
+            "href": "http://order:8080/orders/5"
+        },
+        "self": {
+            "href": "http://order:8080/orders/5"
+        }
+    },
+    "amt": 100,
+    "createTime": "2021-02-20T08:51:17.441+0000",
+    "phoneNumber": "01033132570",
+    "productName": "coffee",
+    "qty": 2,
+    "status": "Ordered"
+}
 
+# 결제 상태 확인 
+root@siege-5b99b44c9c-8qtpd:/# http http://payment:8080/payments/search/findByOrderId?orderId=5
+HTTP/1.1 200 
+Content-Type: application/hal+json;charset=UTF-8
+Date: Sat, 20 Feb 2021 08:58:54 GMT
+Transfer-Encoding: chunked
+
+{
+    "_embedded": {
+        "payments": [
+            {
+                "_links": {
+                    "payment": {
+                        "href": "http://payment:8080/payments/5"
+                    },
+                    "self": {
+                        "href": "http://payment:8080/payments/5"
+                    }
+                },
+                "amt": 100,
+                "createTime": "2021-02-20T08:51:17.452+0000",
+                "orderId": 5,
+                "phoneNumber": "01033132570",
+                "status": "PaymentApproved"
+            }
+        ]
+    },
+    "_links": {
+        "self": {
+            "href": "http://payment:8080/payments/search/findByOrderId?orderId=5"
+        }
+    }
+}
+
+# 음료 상태 확인
+root@siege-5b99b44c9c-8qtpd:/# http http://drink:8080/drinks/search/findByOrderId?orderId=5                              
+HTTP/1.1 200 
+Content-Type: application/hal+json;charset=UTF-8
+Date: Sat, 20 Feb 2021 08:52:14 GMT
+Transfer-Encoding: chunked
+
+{
+    "_embedded": {
+        "drinks": [
+            {
+                "_links": {
+                    "drink": {
+                        "href": "http://drink:8080/drinks/5"
+                    },
+                    "self": {
+                        "href": "http://drink:8080/drinks/5"
+                    }
+                },
+                "createTime": "2021-02-20T08:51:17.515+0000",
+                "orderId": 5,
+                "phoneNumber": "01033132570",
+                "productName": "coffee",
+                "qty": 2,
+                "status": "PaymentApproved"
+            }
+        ]
+    },
+    "_links": {
+        "self": {
+            "href": "http://drink:8080/drinks/search/findByOrderId?orderId=5"
+        }
+    }
+}
+
+# 음료 접수
+root@siege-5b99b44c9c-8qtpd:/# http patch http://drink:8080/drinks/5 status="Receipted"
+HTTP/1.1 200 
+Content-Type: application/json;charset=UTF-8
+Date: Sat, 20 Feb 2021 08:53:29 GMT
+Transfer-Encoding: chunked
+{
+    "_links": {
+        "drink": {
+            "href": "http://drink:8080/drinks/5"
+        },
+        "self": {
+            "href": "http://drink:8080/drinks/5"
+        }
+    },
+    "createTime": "2021-02-20T08:51:17.515+0000",
+    "orderId": 5,
+    "phoneNumber": "01033132570",
+    "productName": "coffee",
+    "qty": 2,
+    "status": "Receipted"
+}
+
+# 주문 취소
+root@siege-5b99b44c9c-8qtpd:/# http patch http://order:8080/orders/5 status="OrderCanceled"
+HTTP/1.1 200 
+Content-Type: application/json;charset=UTF-8
+Date: Sat, 20 Feb 2021 08:54:29 GMT
+Transfer-Encoding: chunked
+{
+    "_links": {
+        "order": {
+            "href": "http://order:8080/orders/5"
+        },
+        "self": {
+            "href": "http://order:8080/orders/5"
+        }
+    },
+    "amt": 100,
+    "createTime": "2021-02-20T08:51:17.441+0000",
+    "phoneNumber": "01033132570",
+    "productName": "coffee",
+    "qty": 2,
+    "status": "OrderCanceled"
+}
+
+# 주문 조회
+root@siege-5b99b44c9c-8qtpd:/# http http://order:8080/orders/5
+HTTP/1.1 200 
+Content-Type: application/hal+json;charset=UTF-8
+Date: Sat, 20 Feb 2021 09:07:49 GMT
+Transfer-Encoding: chunked
+
+{
+    "_links": {
+        "order": {
+            "href": "http://order:8080/orders/5"
+        },
+        "self": {
+            "href": "http://order:8080/orders/5"
+        }
+    },
+    "amt": 100,
+    "createTime": "2021-02-20T09:07:24.114+0000",
+    "phoneNumber": "01033132570",
+    "productName": "coffee",
+    "qty": 2,
+    "status": "Ordered"
+}
+
+```
 
 
 ## CQRS / Meterialized View
@@ -649,6 +812,7 @@ codeBuild
 
 ### 동기식 호출 / 서킷 브레이킹 / 장애격리
 *****
+
 서킷 브레이킹 프레임워크의 선택: Spring FeignClient + Hystrix 옵션을 사용하여 구현함
 시나리오는 order -> payment 호출 시의 연결을 RESTful Request/Response 로 연동하여 구현이 되어있고, 결제 요청이 과도할 경우 CB 를 통하여 장애격리.
 
@@ -656,32 +820,16 @@ codeBuild
 ```
 # application.yml
 
-feign:
-  hystrix:
-    enabled: false 
-
 hystrix:
   command:
+    # 전역설정
     default:
-      execution:
-        isolation:
-          strategy: THREAD
-          thread:
-            timeoutInMilliseconds: 610         #설정 시간동안 처리 지연발생시 timeout and 설정한 fallback 로직 수행     
-      circuitBreaker:
-        requestVolumeThreshold: 20           # 설정수 값만큼 요청이 들어온 경우만 circut open 여부 결정 함
-        errorThresholdPercentage: 30        # requestVolumn값을 넘는 요청 중 설정 값이상 비율이 에러인 경우 circuit open
-        sleepWindowInMilliseconds: 5000    # 한번 오픈되면 얼마나 오픈할 것인지 
-      metrics:
-        rollingStats:
-          timeInMilliseconds: 10000   
+      execution.isolation.thread.timeoutInMilliseconds: 610
 ```
 - 피호출 서비스(payment) 의 임의 부하 처리 - 400 밀리에서 증감 220 밀리 정도 왔다갔다 하게
 ```
 @PrePersist
-    public void onPrePersist(){  //결제이력을 저장한 후 적당한 시간 끌기
-
-        :
+    public void onPrePersist(){ 
         
         try {
             Thread.currentThread().sleep((long) (400 + Math.random() * 220));
@@ -751,7 +899,7 @@ Lifting the server siege...siege aborted due to excessive socket failure; you
 can change the failure threshold in $HOME/.siegerc
 
 Transactions:		         701 hits
-Availability:		       39.58 %
+Availability:		       69.58 %
 Elapsed time:		       59.21 secs
 Data transferred:	        0.47 MB
 Response time:		        8.18 secs
@@ -763,12 +911,90 @@ Failed transactions:	        1070
 Longest transaction:	        9.81
 Shortest transaction:	        0.05
 ``` 
+운영시스템은 siege 툴로 동작 확인 운영시스템이 비정상종료 없이 적절히 열리고 닫힘으로써 자원 보존 확인.
+하지만, 69% 가 성공하였고, 31%가 실패하여 고객 사용성에 있어 좋지 않음 -> 동적 Scale out (replica의 자동적 추가,HPA) 을 통하여 시스템을 확장 해주는 후속처리가 필요.
+#### 오토스케일 아웃
+사용자의 요청을 100% 받아들여주지 못했기 때문에 이에 대한 보완책으로 자동화된 확장 기능을 적용하고자 한다.
+결제서비스에 대한 replica 를 동적으로 늘려주도록 HPA 를 설정한다. 설정은 CPU 사용량이 15프로를 넘어서면 replica 를 10개까지 늘려준다:
+```
+$ kubectl get pods
+NAME                              READY   STATUS    RESTARTS   AGE
+customercenter-7f57cf5f9f-csp2b   1/1     Running   1          20h
+drink-7cb565cb4-d2vwb             1/1     Running   0          37m
+gateway-5dd866cbb6-czww9          1/1     Running   0          3d1h
+order-595c9b45b9-xppbf            1/1     Running   0          36m
+payment-698bfbdf7f-vp5ft          1/1     Running   0          2m32s
+siege-5b99b44c9c-8qtpd            1/1     Running   0          3d1h
 
-### 모니터링
-*****
+
+$ kubectl autoscale deploy payment --min=1 --max=10 --cpu-percent=15
+horizontalpodautoscaler.autoscaling/payment autoscaled
+
+$ kubectl get hpa
+NAME      REFERENCE            TARGETS   MINPODS   MAXPODS   REPLICAS   AGE
+payment   Deployment/payment   2%/15%    1         10        1          2m35s
+
+# CB 에서 했던 방식대로 워크로드를 1분 동안 걸어준다.
+
+root@siege-5b99b44c9c-ldf2l:/# siege -v -c100 -t60s --content-type "application/json" 'http://order:8080/orders POST {"phoneNumber":"01087654321", "productName":"coffee", "qty":2, "amt":1000}'
+** SIEGE 4.0.4
+** Preparing 100 concurrent users for battle.
+The server is now under siege...
+
+$ kubectl get pods
+NAME                              READY     STATUS    RESTARTS   AGE
+customercenter-59f4d6d897-lnpsh   1/1       Running   0          97m
+drink-64bc64d49c-sdwlb            1/1       Running   0          112m
+gateway-6dcdf4cb9-pghzz           1/1       Running   0          74m
+order-7ff9b5458-4wn28             1/1       Running   2          21m
+payment-6f75856f77-b6ctw          1/1       Running   0          118s
+payment-6f75856f77-f2l5m          1/1       Running   0          102s
+payment-6f75856f77-gl24n          1/1       Running   0          41m
+payment-6f75856f77-htkn5          1/1       Running   0          118s
+payment-6f75856f77-rplpb          1/1       Running   0          118s
+siege-5b99b44c9c-ldf2l            1/1       Running   0          96m
+```
+- 오토스케일이 어떻게 되고 있는지 모니터링을 걸어둔다:
+```
+kubectl get deploy payment -w
+
+```
+- 어느정도 시간이 흐른 후 (약 30초) 스케일 아웃이 벌어지는 것을 확인할 수 있다:
+```
+NAME      DESIRED   CURRENT   UP-TO-DATE   AVAILABLE   AGE
+payment   1         1         1         1         1h
+payment   4         1         1         1         1h
+payment   4         1         1         1         1h
+payment   4         1         1         1         1h
+payment   4         4         4         1         1h
+payment   5         4         4         1         1h
+payment   5         4         4         1         1h
+payment   5         4         4         1         1h
+payment   5         5         5         1         1h
+```
+- siege 의 로그를 보아도 전체적인 성공률이 높아진 것을 확인 할 수 있다.
+```
+Transactions:                   909 hits
+Availability:                  99.98 %
+Elapsed time:                 143.38 secs
+Data transferred:               3.06 MB
+Response time:                  3.88 secs
+Transaction rate:              63.40 trans/sec
+Throughput:                     0.02 MB/sec
+Concurrency:                  245.75
+Successful transactions:        9090
+Failed transactions:               2
+Longest transaction:           34.12
+Shortest transaction:           0.01
+```
 
 ### 무정지 재배포
 *****
+먼저 무정지 재배포가 100% 되는 것인지 확인하기 위해서 Autoscaler 이나 CB 설정을 제거함
+seige 로 배포작업 직전에 워크로드를 모니터링 함.
+```
+
+```
 
 ### Persistence Volum Claim
 *****
