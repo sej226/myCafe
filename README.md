@@ -89,6 +89,51 @@
 ## 분석설계
 *****
 
+### Event Storming 결과
+MSAEz 로 모델링한 이벤트스토밍 결과: http://www.msaez.io/#/storming/lQMZGUshp9WP1apR2496YcS40332/mine/83bc10e4ac905edc72761db670852eae
+#### 이벤트 도출
+![event01](https://user-images.githubusercontent.com/26791027/125020025-086c1180-e0b3-11eb-86bc-669cbb5cf8be.PNG)
+### 부적격 이벤트 탈락
+![event02](https://user-images.githubusercontent.com/26791027/125020119-39e4dd00-e0b3-11eb-9735-e254d6b76ef3.PNG)
+
+```
+- 과정중 도출된 잘못된 도메인 이벤트들을 걸러내는 작업을 수행함
+    - 주문시>메뉴카테고리선택됨, 주문시>메뉴검색됨 :  UI 의 이벤트이지, 업무적인 의미의 이벤트가 아니라서 제외
+```
+#### 액터, 커맨드 부착하여 읽기 좋게
+![2](https://user-images.githubusercontent.com/26791027/125021973-a6ada680-e0b6-11eb-886f-4420ffa7b397.PNG)
+#### 어그리게잇으로 묶기
+![3](https://user-images.githubusercontent.com/26791027/125021996-b4632c00-e0b6-11eb-986a-69f66da9f879.PNG)
+#### 바운디드 컨텍스트로 묶기
+![4](https://user-images.githubusercontent.com/26791027/125022263-3bb09f80-e0b7-11eb-81e7-3183af0ddfa4.PNG)
+#### 폴리시 부착 (괄호는 수행주체, 폴리시 부착을 둘째단계에서 해놔도 상관 없음. 전체 연계가 초기에 드러남)
+![5](https://user-images.githubusercontent.com/26791027/125022417-9cd87300-e0b7-11eb-8048-6fe7f9120abf.PNG)
+
+#### 기능적/비기능적 요구사항을 커버하는지 검증
+![11](https://user-images.githubusercontent.com/26791027/125022941-bd54fd00-e0b8-11eb-9d59-f293ef3dd272.png)
+
+```
+- 고객이 주문한다 (ok)
+- 고객이 결제한다 (ok)
+- 주문이 되면 직원에게 전달된다 (ok)
+- 상점주인이 확인하여 접수 후 제조한다 (ok)
+```
+![222](https://user-images.githubusercontent.com/26791027/125023076-0f961e00-e0b9-11eb-9977-7d4f847fc45d.png)
+
+```
+- 고객이 주문을 취소할 수 있다 (ok)
+- 주문이 취소되면 결제가 취소된다 (ok)
+- 고객이 주문상태를 중간중간 조회한다 (ok) 
+- 주문상태가 바뀔 때 마다 알림을 보낸다 (ok)
+```
+
+### Event Storming 모델 image
+![Event Storming](https://user-images.githubusercontent.com/26791027/125021587-f0e25800-e0b5-11eb-88f4-6368abd69fb0.PNG)
+
+
+### 헥사고날 아키텍처 다이어그램 도출
+
+![헥사고날](https://user-images.githubusercontent.com/26791027/125020546-0191ce80-e0b4-11eb-9930-77fcdb9f1b24.PNG)
 
 ## 구현
 *****
