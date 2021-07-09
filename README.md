@@ -695,7 +695,7 @@ Transfer-Encoding: chunked
 *****
 CustomerCenter의 Mypage를 구현하여 Order 서비스, Payment 서비스, Drink 서비스의 데이터를 Composite서비스나 DB Join없이 조회할 수 있다.
 ```
-root@siege-5b99b44c9c-8qtpd:/# http http://customercenter:8080/mypages/search/findByPhoneNumber?phoneNumber="01012345679"
+root@siege-5b99b44c9c-8qtpd:/# http http://customercenter:8080/mypages/findByPhoneNumber?phoneNumber="01012345679"
 HTTP/1.1 200 
 Content-Type: application/json;charset=UTF-8
 Date: Sat, 20 Feb 2021 14:57:45 GMT
@@ -724,20 +724,11 @@ Transfer-Encoding: chunked
         "amt": 5000,
         "id": 4546,
         "orderId": 6,
-        "phoneNumber": "01012345679",
-        "productName": "coffee",
+        "phoneNumber": "010122333",
+        "productName": "latte",
         "qty": 3,
         "status": "Receipted"
     },
-    {
-        "amt": 5000,
-        "id": 4547,
-        "orderId": 7,
-        "phoneNumber": "01012345679",
-        "productName": "coffee",
-        "qty": 3,
-        "status": "Ordered"
-    }
 ]
 ```
 
