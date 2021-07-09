@@ -1016,8 +1016,8 @@ root@siege-5b99b44c9c-ldf2l:/# siege -v -c100 -t60s --content-type "application/
 The server is now under siege...
 Lifting the server siege...
 Transactions:		        4300 hits
-Availability:		       99.79 %
-Elapsed time:		       59.08 secs
+Availability:		       71.73 %
+Elapsed time:		       82.08 secs
 Data transferred:	        1.33 MB
 Response time:		        1.05 secs
 Transaction rate:	       72.78 trans/sec
