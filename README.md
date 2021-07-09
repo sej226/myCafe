@@ -990,11 +990,83 @@ Shortest transaction:           0.01
 
 ### 무정지 재배포
 *****
-먼저 무정지 재배포가 100% 되는 것인지 확인하기 위해서 Autoscaler 이나 CB 설정을 제거함
+먼저 무정지 재배포가 100% 되는 것인지 확인하기 위해서 Autoscaler 이나 CB 설정을 제거함.
 seige 로 배포작업 직전에 워크로드를 모니터링 함.
 ```
+# siege -v -c100 -t60s --content-type "application/json" 'http://order:8080/orders POST {"phoneNumber":"01087654321", "productName":"coffee", "qty":2, "amt":1000}'
+** SIEGE 4.0.4
+** Preparing 100 concurrent users for battle.
+The server is now under siege...
+HTTP/1.1 201     0.20 secs:     321 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     0.34 secs:     321 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     0.39 secs:     321 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     0.38 secs:     321 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     0.40 secs:     321 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     0.40 secs:     321 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     0.40 secs:     321 bytes ==> POST http://order:8080/orders
+HTTP/1.1 201     0.41 secs:     321 bytes ==> POST http://order:8080/orders
+:
 
 ```
+- 새버전으로의 배포 시작
+seige 의 화면으로 넘어가서 Availability 가 100% 미만으로 떨어졌는지 확인
+```
+root@siege-5b99b44c9c-ldf2l:/# siege -v -c100 -t60s --content-type "application/json" 'http://order:8080/orders POST {"phoneNumber":"01087654321", "productName":"coffee", "qty":2, "amt":1000}'
+** SIEGE 4.0.4
+** Preparing 100 concurrent users for battle.
+The server is now under siege...
+Lifting the server siege...
+Transactions:		        4300 hits
+Availability:		       99.79 %
+Elapsed time:		       59.08 secs
+Data transferred:	        1.33 MB
+Response time:		        1.05 secs
+Transaction rate:	       72.78 trans/sec
+Throughput:		        0.02 MB/sec
+Concurrency:		       76.67
+Successful transactions:        4300
+Failed transactions:	           9
+Longest transaction:	        4.07
+Shortest transaction:	        0.03
+```
+
+- 배포기간중 Availability 가 평소 100%에서 70% 대로 떨어지는 것을 확인. 원인은 쿠버네티스가 성급하게 새로 올려진 서비스를 READY 상태로 인식하여 서비스 유입을 진행한 것이기 때문. 이를 막기위해 Readiness Probe 를 설정
+```
+  readinessProbe:
+      httpGet:
+        path: '/actuator/health'
+        port: 8080
+      initialDelaySeconds: 10
+      timeoutSeconds: 2
+      periodSeconds: 5
+      failureThreshold: 10
+```
+```
+kubectl apply -f kubernetes/deployment.yaml
+
+```
+- 동일한 시나리오로 재배포 한 후 Availability 확인:
+```
+root@siege-5b99b44c9c-ldf2l:/# siege -v -c100 -t60s --content-type "application/json" 'http://order:8080/orders POST {"phoneNumber":"01087654321", "productName":"coffee", "qty":2, "amt":1000}'
+** SIEGE 4.0.4
+** Preparing 100 concurrent users for battle.
+The server is now under siege...
+Lifting the server siege...
+Transactions:		        5261 hits
+Availability:		      100.00 %
+Elapsed time:		       59.28 secs
+Data transferred:	        1.62 MB
+Response time:		        1.09 secs
+Transaction rate:	       88.75 trans/sec
+Throughput:		        0.03 MB/sec
+Concurrency:		       97.08
+Successful transactions:        5261
+Failed transactions:	           0
+Longest transaction:	        7.52
+Shortest transaction:	        0.01
+```
+- 배포기간 동안 Availability 가 변화없기 때문에 무정지 재배포가 성공한 것으로 확인됨.
+
 
 ### Persistence Volum Claim
 *****
